@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 from rtmlib import Body
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
 
 openpose_skeleton = True  # True for openpose-style, False for mmpose-style
 device = 'mps'  # cpu, cuda, mps
@@ -8,7 +11,7 @@ backend = 'onnxruntime'  # opencv, onnxruntime, openvino
 ankle_indices = [10, 13]
 body = Body(to_openpose=openpose_skeleton, mode='balanced', backend=backend, device=device)
 
-g = 9.81  # m/s²
+g = 9.810665  # m/s²
 
 
 def free_fall(t, h0):
@@ -27,52 +30,43 @@ def draw_points(img, keypoints, scores):
 
 
 def video_parser(video_path: str):
-    ankle_y_coords = []  # coordinates of the ankle
-    frame_times = []  # frame time
-
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(f"[video_parser] {total_frames} frames @ {fps:.1f} FPS")
+
+    ankle_y_coords = []
+    frame_times = []
     time_elapsed = 0
 
-    while cap.isOpened():
+    # Iterate exactly once per frame and show progress
+    for _ in tqdm(range(total_frames), desc="Processing frames"):
         ret, frame = cap.read()
         if not ret:
             break
 
         keypoints, scores = body(frame)
-        img_show = frame.copy()
-
-        # Only draw ankle joint
-        draw_points(img_show, keypoints, scores)
-
-        # Obtain the position of the ankle joint
-        left_ankle = keypoints[0][10] if len(keypoints[0]) > 10 else None
-        right_ankle = keypoints[0][13] if len(keypoints[0]) > 13 else None
-
-        if left_ankle is not None and right_ankle is not None:
-            # Take the average vertical axis of the left and right ankle joints
-            ankle_y = (left_ankle[1] + right_ankle[1]) / 2
-            # Reverse the Y coordinate
-            ankle_y = frame.shape[0] - ankle_y
-            ankle_y_coords.append(ankle_y)
+        # (… your draw_points / ankle extraction …)
+        # e.g.:
+        left = keypoints[0][10] if len(keypoints[0])>10 else None
+        right = keypoints[0][13] if len(keypoints[0])>13 else None
+        if left is not None and right is not None:
+            y = (left[1] + right[1]) / 2
+            ankle_y_coords.append(frame.shape[0] - y)
             frame_times.append(time_elapsed)
 
-        time_elapsed += 1 / fps
-
-        cv2.imshow('Tracking', img_show)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        time_elapsed += 1/fps
 
     cap.release()
-    cv2.destroyAllWindows()
-
     return frame_times, ankle_y_coords
 
 
 def clean_frame(frame_times, ankle_y_coords):
     # Data cleaning: identifying jump intervals
     y_diff = np.diff(ankle_y_coords)  # Calculate the change in adjacent points
-    jump_start = np.where(y_diff > 15)[0][0]  # Find the first obvious point of increase
+    peak_diff = np.max(y_diff)
+    thr = peak_diff * 0.5
+    jump_start = np.where(y_diff > thr)[0][0]  # Find the first obvious point of increase
     jump_end = np.where(ankle_y_coords[jump_start:] < ankle_y_coords[jump_start])[0][0] + jump_start
 
     filtered_times = frame_times[jump_start:jump_end]
@@ -97,3 +91,26 @@ def fit_data(x_data, y_data, filtered_times):
     fit_heights = np.polyval(coeffs, fit_times - filtered_times[0])
 
     return coeffs, fit_times, fit_heights
+
+def debug_plot(filtered_times, filtered_heights, fit_times, fit_heights, height, duration, coeffs, cm_per_pixel):
+
+    plt.figure(figsize=(10, 5))
+    plt.scatter(filtered_times, filtered_heights, color='b', label='Cleaned Ankle Data')
+    plt.plot(fit_times, fit_heights, color='r', linestyle='-', label=f'Polyfit: h = {coeffs[0]*cm_per_pixel:.2f} t^2 + {coeffs[1]*cm_per_pixel:.2f} t + {coeffs[2]*cm_per_pixel:.2f}')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Relative Height(cm)')
+    plt.title('Jump Motion Polynomial Fitting')
+    plt.legend()
+    plt.grid()
+    plt.text(0.01, 0.95, f"Jump Height: {height:.2f} cm",
+             fontsize=12, ha='left', va='top', color='red',
+             transform=plt.gca().transAxes)
+
+    plt.text(0.01, 0.90, f"Flight Time: {duration:.2f} s",
+             fontsize=12, ha='left', va='top', color='green',
+             transform=plt.gca().transAxes)
+
+    plt.text(0.01, 0.85, f"Max velocity: {coeffs[1] * cm_per_pixel / 100:.2f} m/s",
+             fontsize=12, ha='left', va='top', color='blue',
+             transform=plt.gca().transAxes)
+    plt.savefig('jump_plot.png', dpi=150)
