@@ -1,0 +1,8 @@
+*.mp4
+*.jpg
+*.png
+*.pt
+*.venvultralytics/
+.venv
+__pycache__/
+*.pyc
