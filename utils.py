@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 openpose_skeleton = True  # True for openpose-style, False for mmpose-style
-device = 'mps'  # cpu, cuda, mps
+device = 'cuda'  # cpu, cuda, mps
 backend = 'onnxruntime'  # opencv, onnxruntime, openvino
 ankle_indices = [10, 13]
 body = Body(to_openpose=openpose_skeleton, mode='balanced', backend=backend, device=device)

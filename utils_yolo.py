@@ -179,30 +179,22 @@ def video_parser_with_yolo(video_path: str, output_path: str = None):
         # Detect person with YOLO
         bbox, confidence = detect_person(frame)
         
-        if bbox is not None:
-            # Extract person region for pose estimation
-            x1, y1, x2, y2 = bbox
-            person_region = frame[y1:y2, x1:x2]
+        # if bbox is not None:
+        #     # Extract person region for pose estimation
+        #     x1, y1, x2, y2 = bbox
+        #     person_region = frame[y1:y2, x1:x2]
             
-            if person_region.size > 0:  # Check if region is valid
-                keypoints, scores = body(person_region)
-                
-                # Adjust keypoint coordinates back to original frame
-                if len(keypoints[0]) > 0:
-                    adjusted_keypoints = keypoints.copy()
-                    for i in range(len(keypoints[0])):
-                        if keypoints[0][i] is not None:
-                            adjusted_keypoints[0][i][0] += x1
-                            adjusted_keypoints[0][i][1] += y1
-                    
-                    # Extract ankle positions
-                    left = adjusted_keypoints[0][10] if len(adjusted_keypoints[0]) > 10 else None
-                    right = adjusted_keypoints[0][13] if len(adjusted_keypoints[0]) > 13 else None
-                    
-                    if left is not None and right is not None:
-                        y = (left[1] + right[1]) / 2
-                        ankle_y_coords.append(frame.shape[0] - y)
-                        frame_times.append(time_elapsed)
+            # if person_region.size > 0:  # Check if region is valid
+        keypoints, scores = body(frame)
+        
+        # Adjust keypoint coordinates back to original frame
+        # if len(keypoints[0]) > 0:
+        left = keypoints[0][10] if len(keypoints[0])>10 else None
+        right = keypoints[0][13] if len(keypoints[0])>13 else None
+        if left is not None and right is not None:
+            y = (left[1] + right[1]) / 2
+            ankle_y_coords.append(frame.shape[0] - y)
+            frame_times.append(time_elapsed)
 
         time_elapsed += 1/fps
 
@@ -332,4 +324,4 @@ def debug_plot(filtered_times, filtered_heights, fit_times, fit_heights, height,
     plt.text(0.01, 0.85, f"Max velocity: {coeffs[1] * cm_per_pixel / 100:.2f} m/s",
              fontsize=12, ha='left', va='top', color='blue',
              transform=plt.gca().transAxes)
-    plt.savefig('jump_plot.png', dpi=150) 
+    plt.savefig('jump_plot_yolo.png', dpi=150) 
